@@ -76,59 +76,9 @@ jobs:
       # the whole point of checking the version string before any of the expensive ESP-IDF
       # setup/build steps, not after them.
 
-      - name: Copy board directory in
+      - name: Build
         if: steps.check.outputs.exists != 'true'
-        run: cp -r boards/bionebicine_pds_2026 cp/ports/espressif/boards/
-
-      - name: Set IDF env
-        if: steps.check.outputs.exists != 'true'
-        working-directory: cp
-        run: |
-          echo "IDF_PATH=$GITHUB_WORKSPACE/cp/ports/espressif/esp-idf" >> "$GITHUB_ENV"
-          echo "IDF_TOOLS_PATH=$GITHUB_WORKSPACE/cp/.idf_tools" >> "$GITHUB_ENV"
-          echo "ESP_ROM_ELF_DIR=$GITHUB_WORKSPACE/cp/.idf_tools" >> "$GITHUB_ENV"
-
-      - name: Init esp-idf submodules
-        if: steps.check.outputs.exists != 'true'
-        working-directory: cp
-        run: git submodule update --init --depth=1 --recursive "$IDF_PATH"
-
-      - name: Fetch remaining submodules
-        if: steps.check.outputs.exists != 'true'
-        working-directory: cp
-        run: python tools/ci_fetch_deps.py bionebicine_pds_2026
-
-      - name: Install ESP-IDF tools
-        if: steps.check.outputs.exists != 'true'
-        working-directory: cp
-        run: |
-          "$IDF_PATH/install.sh"
-          "$IDF_PATH/tools/idf_tools.py" install ninja
-          source "$IDF_PATH/export.sh"
-          echo "IDF_PYTHON_ENV_PATH=$IDF_PYTHON_ENV_PATH" >> "$GITHUB_ENV"
-          echo "ESP_IDF_VERSION=$ESP_IDF_VERSION" >> "$GITHUB_ENV"
-          echo "$PATH" >> "$GITHUB_PATH"
-
-      - name: Install Python dependencies
-        if: steps.check.outputs.exists != 'true'
-        working-directory: cp
-        run: |
-          python3 -u tools/ci_set_idf_constraint.py
-          if [ -n "${IDF_CONSTRAINT_FILE:-}" ] && [ -f "$IDF_CONSTRAINT_FILE" ]; then
-            pip install -c "$IDF_CONSTRAINT_FILE" -r requirements-dev.txt
-          else
-            pip install -r requirements-dev.txt
-          fi
-
-      - name: Build mpy-cross
-        if: steps.check.outputs.exists != 'true'
-        working-directory: cp
-        run: make -C mpy-cross -j$(nproc)
-
-      - name: Build board
-        if: steps.check.outputs.exists != 'true'
-        working-directory: cp/ports/espressif
-        run: make -j$(nproc) BOARD=bionebicine_pds_2026
+        run: ./scripts/build.sh cp
 
       - name: Publish release
         if: steps.check.outputs.exists != 'true'
