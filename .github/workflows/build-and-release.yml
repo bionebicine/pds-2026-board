@@ -1,0 +1,145 @@
+name: Build and release
+
+on:
+  schedule:
+    # Weekly, at a non-round offset - avoid the top of the hour, which is when a large
+    # fraction of all scheduled GitHub Actions jobs fire by default.
+    - cron: '37 6 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  resolve-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      stable_tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - id: resolve
+        run: |
+          TAG=$(gh api repos/adafruit/circuitpython/releases/latest --jq .tag_name)
+          echo "Latest stable tag: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  build:
+    needs: resolve-versions
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: main
+            ref: main
+          - name: stable
+            ref: ${{ needs.resolve-versions.outputs.stable_tag }}
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v7.0.1
+
+      - name: Checkout circuitpython at ${{ matrix.ref }}
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: adafruit/circuitpython
+          ref: ${{ matrix.ref }}
+          fetch-depth: 0
+          path: cp
+
+      - name: Set up Python
+        uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Compute version string
+        id: version
+        working-directory: cp
+        run: |
+          VERSION=$(python py/version.py)
+          echo "Version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check for an existing release
+        id: check
+        run: |
+          if gh release view "${{ steps.version.outputs.version }}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release ${{ steps.version.outputs.version }} already exists - nothing new to build."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # Everything below only runs when there's actually a new version to publish - this is
+      # the whole point of checking the version string before any of the expensive ESP-IDF
+      # setup/build steps, not after them.
+
+      - name: Copy board directory in
+        if: steps.check.outputs.exists != 'true'
+        run: cp -r boards/bionebicine_pds_2026 cp/ports/espressif/boards/
+
+      - name: Set IDF env
+        if: steps.check.outputs.exists != 'true'
+        working-directory: cp
+        run: |
+          echo "IDF_PATH=$GITHUB_WORKSPACE/cp/ports/espressif/esp-idf" >> "$GITHUB_ENV"
+          echo "IDF_TOOLS_PATH=$GITHUB_WORKSPACE/cp/.idf_tools" >> "$GITHUB_ENV"
+          echo "ESP_ROM_ELF_DIR=$GITHUB_WORKSPACE/cp/.idf_tools" >> "$GITHUB_ENV"
+
+      - name: Init esp-idf submodules
+        if: steps.check.outputs.exists != 'true'
+        working-directory: cp
+        run: git submodule update --init --depth=1 --recursive "$IDF_PATH"
+
+      - name: Fetch remaining submodules
+        if: steps.check.outputs.exists != 'true'
+        working-directory: cp
+        run: python tools/ci_fetch_deps.py bionebicine_pds_2026
+
+      - name: Install ESP-IDF tools
+        if: steps.check.outputs.exists != 'true'
+        working-directory: cp
+        run: |
+          "$IDF_PATH/install.sh"
+          "$IDF_PATH/tools/idf_tools.py" install ninja
+          source "$IDF_PATH/export.sh"
+          echo "IDF_PYTHON_ENV_PATH=$IDF_PYTHON_ENV_PATH" >> "$GITHUB_ENV"
+          echo "ESP_IDF_VERSION=$ESP_IDF_VERSION" >> "$GITHUB_ENV"
+          echo "$PATH" >> "$GITHUB_PATH"
+
+      - name: Install Python dependencies
+        if: steps.check.outputs.exists != 'true'
+        working-directory: cp
+        run: |
+          python3 -u tools/ci_set_idf_constraint.py
+          if [ -n "${IDF_CONSTRAINT_FILE:-}" ] && [ -f "$IDF_CONSTRAINT_FILE" ]; then
+            pip install -c "$IDF_CONSTRAINT_FILE" -r requirements-dev.txt
+          else
+            pip install -r requirements-dev.txt
+          fi
+
+      - name: Build mpy-cross
+        if: steps.check.outputs.exists != 'true'
+        working-directory: cp
+        run: make -C mpy-cross -j$(nproc)
+
+      - name: Build board
+        if: steps.check.outputs.exists != 'true'
+        working-directory: cp/ports/espressif
+        run: make -j$(nproc) BOARD=bionebicine_pds_2026
+
+      - name: Publish release
+        if: steps.check.outputs.exists != 'true'
+        run: |
+          SHA=$(git -C cp rev-parse HEAD)
+          gh release create "${{ steps.version.outputs.version }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --latest \
+            --title "${{ steps.version.outputs.version }}" \
+            --notes "Built from adafruit/circuitpython@$SHA (${{ matrix.name }})." \
+            cp/ports/espressif/build-bionebicine_pds_2026/firmware.bin \
+            cp/ports/espressif/build-bionebicine_pds_2026/firmware.uf2
+        env:
+          GH_TOKEN: ${{ github.token }}
