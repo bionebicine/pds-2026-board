@@ -80,6 +80,22 @@ jobs:
         if: steps.check.outputs.exists != 'true'
         run: ./scripts/build.sh cp
 
+      - name: Rename release files
+        # Follows Adafruit's own naming convention for CircuitPython release files (see
+        # adafruit-circuit-python.s3.amazonaws.com), minus the "adafruit-" prefix since these
+        # aren't Adafruit's own builds: circuitpython-<board>-<locale>-<version>.<ext>
+        if: steps.check.outputs.exists != 'true'
+        id: rename
+        run: |
+          BOARD=bionebicine_pds_2026
+          LOCALE=en_US
+          BUILD_DIR="cp/ports/espressif/build-$BOARD"
+          NAME="circuitpython-$BOARD-$LOCALE-${{ steps.version.outputs.version }}"
+          cp "$BUILD_DIR/firmware.bin" "$BUILD_DIR/$NAME.bin"
+          cp "$BUILD_DIR/firmware.uf2" "$BUILD_DIR/$NAME.uf2"
+          echo "bin_path=$BUILD_DIR/$NAME.bin" >> "$GITHUB_OUTPUT"
+          echo "uf2_path=$BUILD_DIR/$NAME.uf2" >> "$GITHUB_OUTPUT"
+
       - name: Publish release
         if: steps.check.outputs.exists != 'true'
         run: |
@@ -89,7 +105,7 @@ jobs:
             --latest \
             --title "${{ steps.version.outputs.version }}" \
             --notes "Built from adafruit/circuitpython@$SHA (${{ matrix.name }})." \
-            cp/ports/espressif/build-bionebicine_pds_2026/firmware.bin \
-            cp/ports/espressif/build-bionebicine_pds_2026/firmware.uf2
+            "${{ steps.rename.outputs.bin_path }}" \
+            "${{ steps.rename.outputs.uf2_path }}"
         env:
           GH_TOKEN: ${{ github.token }}
