@@ -15,3 +15,7 @@ CIRCUITPY_ESP_FLASH_FREQ = 80m
 CIRCUITPY_ESP_PSRAM_SIZE = 8MB
 CIRCUITPY_ESP_PSRAM_MODE = opi
 CIRCUITPY_ESP_PSRAM_FREQ = 80m
+
+# Independent of CIRCUITPY_DUALBANK: only *defaults* to its value, so this keeps OTA working
+# while eliminating the "storage extended" state.
+CIRCUITPY_STORAGE_EXTEND = 0
