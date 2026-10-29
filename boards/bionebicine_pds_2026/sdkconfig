@@ -24,3 +24,13 @@ CONFIG_RTC_CLK_CAL_CYCLES=3000
 # keeping this board's own RTC_WDT (used during microcontroller.reset()) on a live clock
 # instead of one that may be stalled.
 CONFIG_ESP_XT_WDT=y
+
+# NimBLE's GATT (robust) caching / Database Hash support (BLE 5.1). Without it, a bonded
+# central that already cached this board's attribute table has no standards-compliant way
+# to learn the table changed across a reboot - CircuitPython only signals "Service Changed"
+# on a soft reload with services already running (common-hal/_bleio/__init__.c's
+# bleio_reset()), never on a hard reset or reflash, which is the only kind this board ever
+# does. With this on, NimBLE hashes the real attribute table and compares it against what
+# each bonded peer last saw on every reconnect, so a central correctly redoes discovery
+# instead of trusting a stale handle map after a reflash changes the table's shape.
+CONFIG_BT_NIMBLE_GATT_CACHING=y
