@@ -19,4 +19,8 @@
 CONFIG_RTC_CLK_SRC_EXT_CRYS=y
 CONFIG_RTC_CLK_CAL_CYCLES=3000
 
-
+# adafruit/circuitpython#11686: dedicated hardware watchdog for the external crystal above.
+# If it stalls, RTC_CNTL automatically switches RTC_SLOW_CLK to a calibrated backup clock,
+# keeping this board's own RTC_WDT (used during microcontroller.reset()) on a live clock
+# instead of one that may be stalled.
+CONFIG_ESP_XT_WDT=y
