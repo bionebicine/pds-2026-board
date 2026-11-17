@@ -25,6 +25,26 @@ CIRCUITPY_STORAGE_EXTEND = 0
 # unconditionally, and CircuitPython's Makefile only pulls those in when CIRCUITPY_WIFI
 # is nonzero, so disabling it breaks the BLE link on this chip. The WiFi radio itself is
 # left off at runtime instead.
+#
+# CIRCUITPY_WEB_WORKFLOW is a separate variable that otherwise defaults to
+# CIRCUITPY_NETWORK's value (which in turn defaults to CIRCUITPY_WIFI's) - explicitly
+# turned off here rather than inherited, since this project doesn't use networking at all
+# and the supervisor's own web-workflow startup activity runs before boot.py/code.py ever
+# get a chance to run (so mcu/app/main.py's wifi.radio.enabled = False can't prevent it).
+# Hardware-confirmed (2026-11-17, speed branch) via host-timestamped UART capture across a
+# real manual-Off deep-sleep wake: ~5.2s of the ~6.3s spent before code.py's first line
+# even runs sits in two gaps immediately around a native "Wi-Fi: No IP" status update -
+# see docs/boot_timing_report.md in fed_pds_nebulizer for the full before/after.
+CIRCUITPY_WEB_WORKFLOW = 0
+#
+# Skips supervisor/shared/safe_mode.c's wait_for_safe_mode_reset() - a hardcoded 1000ms
+# wait on every normal boot (skipped only for brownout/watchdog/rescue-debug resets) to
+# give a window for a double-reset-to-force-safe-mode gesture. Redundant for this board:
+# no native RST button exists on the bare WROOM-1 module (Mike/Kent, 2026-11-17), and
+# there's no bench need to force safe mode this way - this project's own
+# persist.overlay_store.check_and_recover() crash-loop rollback handles bad-firmware
+# recovery independently of this native mechanism.
+CIRCUITPY_SKIP_SAFE_MODE_WAIT = 1
 CIRCUITPY_AUDIOPWMIO = 0
 CIRCUITPY_AUDIOBUSIO = 0
 CIRCUITPY_AUDIOI2SIN = 0
